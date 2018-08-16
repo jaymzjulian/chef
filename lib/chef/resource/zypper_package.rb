@@ -34,6 +34,8 @@ class Chef
       property :allow_downgrade, [ TrueClass, FalseClass ],
                description: "",
                default: false
+
+      property :global_options, [ String, Array ], coerce: proc { |x| x.is_a?(String) ? x.shellsplit : x }
     end
   end
 end
