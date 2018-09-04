@@ -21,8 +21,8 @@ require "functional/resource/base"
 require "chef/mixin/shell_out"
 
 # run this test only for following platforms.
-exclude_test = !(%w{suse}.include?(ohai[:platform_family]) && !File.exist?("/usr/bin/zypper"))
-describe Chef::Resource::ZypperPackage, :requires_root, external: exclude_test do
+#exclude_test = !(%w{opensuseleap suse}.include?(ohai[:platform_family]) && !File.exist?("/usr/bin/zypper"))
+describe Chef::Resource::ZypperPackage, :requires_root, :suse_only do#, external: exclude_test do
   include Chef::Mixin::ShellOut
 
   # NOTE: every single test here needs to explicitly call preinstall.
