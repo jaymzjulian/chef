@@ -16,7 +16,6 @@ def generate_resource_block(resource_name, properties)
   # build the resource string with property spacing between property names and comments
   text = "  #{resource_name} 'name' do\n"
   properties.each do |p|
-    next if p["name"] == "name"
     text << "    #{p['name'].ljust(padding_size)}"
     text << friendly_types_list(p["is"])
     text << " # default value: 'name' unless specified" if p["name_property"]
@@ -46,6 +45,8 @@ def friendly_properly_list(arr)
   return nil if arr.empty? # resources w/o properties
 
   props = arr.map { |x| "``#{x['name']}``" }
+
+  # build the text string containing all properties bolded w/ punctuation
   if props.size > 1
     props[-1] = "and #{props[-1]}"
   end
@@ -294,7 +295,7 @@ resources.each do |resource, data|
   @examples = data["examples"]
   @introduced = data["introduced"]
   @preview = data["preview"]
-  @properties = data["properties"].sort_by! { |v| v["name"] }
+  @properties = data["properties"].reject { |v| v["name"] == "name" }.sort_by! { |v| v["name"] }
   @resource_block = generate_resource_block(resource, @properties)
   @property_list = friendly_properly_list(@properties)
 
