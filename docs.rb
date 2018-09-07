@@ -18,10 +18,11 @@ def generate_resource_block(resource_name, properties)
     next if p["name"] == "name"
     text << "    #{p['name'].ljust(padding_size)}"
     text << friendly_types_list(p["is"])
+    text << " # default value: 'name' unless specified" if p["name_property"]
     text << " # default value: #{p['default']}" unless p["default"].nil? || p["default"] == "lazy default"
     text << "\n"
   end
-  text << "    #{'action'.ljust(padding_size)}# defaults to :#{@default_action.first} if not specified\n"
+  text << "    #{'action'.ljust(padding_size)}Symbol # defaults to :#{@default_action.first} if not specified\n"
   text << "  end"
   text
 end
