@@ -96,6 +96,8 @@ The <%= @name %> resource has the following syntax:
 where:
 
 * ``<%= @name %>`` is the resource.
+* ``name`` is the name given to the resource block.
+* ``action`` identifies which steps the chef-client will take to bring the node into the desired state.
 * <%= bolded_friendly_list(@properties.collect {|x| x['name']}) %> are the properties available to this resource.
 
 Actions
