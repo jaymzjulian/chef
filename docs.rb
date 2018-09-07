@@ -32,7 +32,7 @@ end
 # @return String
 def largest_property_name(properties)
   if properties.empty?
-    0
+    6 # we'll include "action" even without properties and it's 6 chars long
   else
     properties.max_by { |x| x["name"].size }["name"].size
   end
@@ -134,6 +134,7 @@ The <%= @name %> resource has the following properties:
    <%= p['description'] %>
 <% unless p['introduced'].nil? %>   New in Chef Client <%= p['introduced'] %>.<% end %>
 <% end %>
+<% if @properties.empty? %>This resource does not have any properties.\n<% end %>
 Common Resource Functionality
 =====================================================
 
