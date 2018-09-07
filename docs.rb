@@ -135,7 +135,7 @@ The <%= @name %> resource has the following properties:
 
 resources = Chef::JSONCompat.parse(ResourceInspector.inspect)
 resources.each do |resource, data|
-  next if ["l_w_r_p_base", "user_resource_abstract_base_class", "linux_user", "pw_user", "aix_user", "dscl_user", "solaris_user", "windows_user", ""].include?(resource)
+  next if ["scm", "whyrun_safe_ruby_block", "l_w_r_p_base", "user_resource_abstract_base_class", "linux_user", "pw_user", "aix_user", "dscl_user", "solaris_user", "windows_user", ""].include?(resource)
   puts "Writing out #{resource}."
   @name = resource
   @description = data["description"]
