@@ -129,7 +129,7 @@ Properties
 The <%= @name %> resource has the following properties:
 <% @properties.each do |p| %>
 ``<%= p['name'] %>``
-   **Ruby Type:** <%= friendly_types_list(p['is']) %><% unless p['default'].nil? %> | **Default Value:** ``<%= p['default'] %>``<% end %><% if p['deprecated'] %> | ``DEPRECATED``<% end %><% if p['name_property'] %> | **Default Value:** ``'name'``<% end %>
+   **Ruby Type:** <%= friendly_types_list(p['is']) %><% unless p['default'].nil? || p['default'] == 'lazy default' %> | **Default Value:** ``<%= p['default'] %>``<% end %><% if p['required'] %> | ``REQUIRED``<% end %><% if p['deprecated'] %> | ``DEPRECATED``<% end %><% if p['name_property'] %> | **Default Value:** ``'name'``<% end %>
 
    <%= p['description'] %>
 <% unless p['introduced'].nil? %>   New in Chef Client <%= p['introduced'] %>.<% end %>
