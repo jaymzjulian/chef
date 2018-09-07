@@ -37,16 +37,21 @@ def largest_property_name(properties)
   end
 end
 
-# given an array ``bold`` the values, comma separate them, and put include 'and' if 3+
-# @return String
-def bolded_friendly_list(arr)
-  arr.map! { |x| "``#{x}``" }
+# given an array of properties print out a single comma separated string
+# handling commas / and properly and plural vs. singular wording depending
+# on the number of properties
+def friendly_properly_list(arr)
+  return nil if arr.empty? # resources w/o properties
+
+  arr.map! { |x| "``#{x['name']}``" }
   if arr.size > 1
     arr[-1] = "and #{arr[-1]}"
   end
-  arr.size == 2 ? arr.join(" ") : arr.join(", ")
+  text = arr.size == 2 ? arr.join(" ") : arr.join(", ")
+  text << ( arr.size > 1 ? " are the properties" : " is the property" )
+  text << " available to this resource."
+  text
 end
-
 # given an array of types print out a single comma separated string
 # handling a nil value that needs to be printed as "nil" and TrueClass/FalseClass
 # which needs to be "true" and "false"
@@ -98,7 +103,7 @@ where:
 * ``<%= @name %>`` is the resource.
 * ``name`` is the name given to the resource block.
 * ``action`` identifies which steps the chef-client will take to bring the node into the desired state.
-* <%= bolded_friendly_list(@properties.collect {|x| x['name']}) %> are the properties available to this resource.
+<% unless @property_list.nil? %>* <%= @property_list %><% end %>
 
 Actions
 =====================================================
@@ -141,7 +146,7 @@ resources.each do |resource, data|
   @preview = data["preview"]
   @properties = data["properties"].sort_by! { |v| v["name"] }
   @resource_block = generate_resource_block(resource, @properties)
-  #require 'pry'; binding.pry
+  @property_list = friendly_properly_list(@properties)
 
   t = ERB.new(template)
   File.open("resource_#{@name}.rst", "w") do |f|
