@@ -52,6 +52,7 @@ def friendly_properly_list(arr)
   text << " available to this resource."
   text
 end
+
 # given an array of types print out a single comma separated string
 # handling a nil value that needs to be printed as "nil" and TrueClass/FalseClass
 # which needs to be "true" and "false"
@@ -78,7 +79,7 @@ end
 # @return String
 def bolded_description(name, description)
   return nil if description.nil? # handle resources missing descriptions
-  description.gsub(name, "**#{name}**")
+  description.gsub( "#{name} ", "**#{name}** ")
 end
 
 template = %{=====================================================
