@@ -8,6 +8,7 @@ require "chef/resource_inspector"
 require "erb"
 
 # generate the top example resource block example text
+# @param properties Array<Hash>
 # @return String
 def generate_resource_block(resource_name, properties)
   padding_size = largest_property_name(properties) + 6
@@ -40,15 +41,16 @@ end
 # given an array of properties print out a single comma separated string
 # handling commas / and properly and plural vs. singular wording depending
 # on the number of properties
+# @return String
 def friendly_properly_list(arr)
   return nil if arr.empty? # resources w/o properties
 
-  arr.map! { |x| "``#{x['name']}``" }
-  if arr.size > 1
-    arr[-1] = "and #{arr[-1]}"
+  props = arr.map { |x| "``#{x['name']}``" }
+  if props.size > 1
+    props[-1] = "and #{props[-1]}"
   end
-  text = arr.size == 2 ? arr.join(" ") : arr.join(", ")
-  text << ( arr.size > 1 ? " are the properties" : " is the property" )
+  text = props.size == 2 ? props.join(" ") : props.join(", ")
+  text << ( props.size > 1 ? " are the properties" : " is the property" )
   text << " available to this resource."
   text
 end
