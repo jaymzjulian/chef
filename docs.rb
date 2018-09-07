@@ -40,10 +40,10 @@ end
 # @return String
 def bolded_friendly_list(arr)
   arr.map! { |x| "``#{x}``" }
-  if arr.size > 2
+  if arr.size > 1
     arr[-1] = "and #{arr[-1]}"
   end
-  arr.join(", ")
+  arr.size == 2 ? arr.join(" ") : arr.join(", ")
 end
 
 # given an array of types print out a single comma separated string
@@ -95,7 +95,7 @@ The <%= @name %> resource has the following syntax:
 where:
 
 * ``<%= @name %>`` is the resource.
-* <%= bolded_friendly_list(@properties[0..-2].collect {|x| x['name']}) %> are the properties available to this resource.
+* <%= bolded_friendly_list(@properties.collect {|x| x['name']}) %> are the properties available to this resource.
 
 Actions
 =====================================================
