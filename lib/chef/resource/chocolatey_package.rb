@@ -67,6 +67,10 @@ class Chef
         description: "The name of the package. Default value: the name of the resource block.",
         coerce: proc { |x| [x].flatten }
 
+      property :bulk_query, [TrueClass, FalseClass],
+        description: "Bulk query the chocolatey server?  This will cause the proovider to list all packages instead of doing individual queries.",
+        default: false
+
       property :version, [String, Array],
         description: "The version of a package to be installed or upgraded.",
         coerce: proc { |x| [x].flatten }

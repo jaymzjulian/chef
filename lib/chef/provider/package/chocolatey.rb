@@ -18,6 +18,7 @@
 require_relative "../package"
 require_relative "../../resource/chocolatey_package"
 require_relative "../../win32/api/command_line_helper" if ChefUtils.windows?
+require 'zip'
 
 class Chef
   class Provider
@@ -154,6 +155,29 @@ class Chef
           gem_v1 <=> gem_v2
         end
 
+        # This checks that the repo list has not changed between now and when we last checked
+        # the cache
+        def cache_is_valid?
+          return false if $choco_config.nil? || (actual_config != $choco_config)
+          true
+        end
+
+        # Cache the configuration in order to ensure that we can check our
+        # package cache is valid for a run
+        def actual_config
+          config_path = ::File.join("#{choco_install_path}", "config", "chocolatey.config")
+          if ::File.exist?(config_path)
+            ::File.read(config_path)
+          else
+            nil
+          end
+        end
+
+        # update the validity of the package cache
+        def set_package_cache
+          $choco_config = actual_config
+        end
+
         # Magic to find where chocolatey is installed in the system, and to
         # return the full path of choco.exe
         #
@@ -171,9 +195,15 @@ class Chef
 
         # lets us mock out an incorrect value for testing.
         def choco_install_path
-          result = powershell_exec!(PATHFINDING_POWERSHELL_COMMAND).result
-          result = "" if result.empty?
-          result
+          @choco_install_path ||= begin
+            result = powershell_exec!(PATHFINDING_POWERSHELL_COMMAND).result
+            result = "" if result.empty?
+            result
+          end
+        end
+
+        def choco_lib_path
+          ::File.join(choco_install_path, "lib")
         end
 
         # Helper to dispatch a choco command through shell_out using the timeout
@@ -214,6 +244,36 @@ class Chef
           Hash[*lowercase_names(new_resource.package_name).zip(desired_versions).flatten]
         end
 
+        def nested_package_resources(res)
+          package_collection = []
+          res.each do |child_res|
+            package_collection += nested_package_resources(child_res.resources)
+            next unless child_res.is_a? Chef::Resource::ChocolateyPackage
+            package_collection += child_res.package_name.flatten
+          end
+          package_collection
+        end
+
+        # walk the collection to find peer resources to ensure that
+        # we get as much of the cache this run as possible.  Unified mode
+        # sub-resources will, of course, be incremental with this, since we can't
+        # grab them in advance, but even in that case we're still way, way
+        # more efficient with our queries...
+        #
+        # @return [Array] List of chocolatey packages referenced in the run list
+        def collect_package_requests(ignore_list: [])
+          return ['*'] if new_resource.bulk_query || ENV['BULK_QUERY_CHOCOLATEY'] == 'true'
+          # Get to the root of the resource collection
+          rc = run_context.parent_run_context || run_context
+          while rc.parent_run_context
+            rc = rc.parent_run_context
+          end
+          package_collection = package_name_array
+          package_collection += nested_package_resources(rc.resource_collection)
+          # downcase the array and uniq
+          package_collection.map(&:downcase).uniq.filter { |pkg| !ignore_list.include?(pkg) }
+        end
+
         # Helper to construct optional args out of new_resource
         #
         # @param include_source [Boolean] should the source parameter be added
@@ -230,35 +290,84 @@ class Chef
         #
         # @return [Hash] name-to-version mapping of available packages
         def available_packages
-          return @available_packages if @available_packages
+          # @available_packages is per object - each resource is an object, meaning if you
+          # have a LOT of chocolatey package installs, then this quickly gets very slow.
+          # So we use $available_packages instead - BUT it's important to ensure that
+          # the cache is valid before you do this.  There are two cache items that can change:
+          # a) the sources - we check this with cache_is_valid?
+          if cache_is_valid? && $available_packages.is_a?(Hash) && $available_packages[new_resource.list_options]
+            # Ensure we have the package names, or else double check...
+            need_redo = false
+            package_name_array.each do |pkg|
+              need_redo = true unless $available_packages[new_resource.list_options][pkg.downcase]
+            end
+            return $available_packages[new_resource.list_options] unless need_redo
+          end
+          if new_resource.list_options
+            Chef::Log.info("Fetching chocolatey package list with options #{new_resource.list_options.inspect}")
+          else
+            Chef::Log.info("Fetching chocolatey package list")
+          end
 
-          @available_packages = {}
-          package_name_array.each do |pkg|
+          # Only reset the array if the cache is invalid - if we're just augmenting it, don't
+          # clear it
+          $available_packages = {} if $available_packages.nil? || !cache_is_valid?
+          $available_packages[new_resource.list_options] = {} if $available_packages[new_resource.list_options].nil?
+
+          # Attempt to get everything we need in a single query.
+          # Grab 25 packages at a time at most, to avoid hurting servers too badly
+          #
+          # For v1 we actually used to grab the entire list of packages, but we found
+          # that it could cause undue load on really large package lists
+          collect_package_requests(ignore_list: $available_packages[new_resource.list_options].keys).each_slice(25) do |pkg_set|
             available_versions =
               begin
-                cmd = [ query_command, "-r", pkg ]
-                cmd += common_options
+                cmd = [ query_command, "-r" ]
+
+                # Chocolatey doens't actually take a wildcard for this query, however
+                # it will return all paxckages when using '*' as a query
+                unless pkg_set == ['*']
+                  cmd += pkg_set
+                end
                 cmd.push( new_resource.list_options ) if new_resource.list_options
+
+                Chef::Log.debug("Choco List Command: #{cmd}")
 
                 raw = parse_list_output(*cmd)
                 raw.keys.each_with_object({}) do |name, available|
                   available[name] = desired_name_versions[name] || raw[name]
                 end
-              end
-            @available_packages.merge! available_versions
+            end
+            $available_packages[new_resource.list_options].merge! available_versions
           end
-          @available_packages
+          # Mark the cache as valid, with the required metadata
+          set_package_cache
+          $available_packages[new_resource.list_options]
         end
 
-        # Installed packages in chocolatey as a Hash of names mapped to versions
-        # (names are downcased for case-insensitive matching)
-        #
-        # Beginning with Choco 2.0, "list" returns local packages only while "search" returns packages from external package sources
+        # Return packages sourced from the local disk - becuase this doesn't have
+        # shell out overhead, this ends up being a significant performance win
+        # vs calling choco list
         #
         # @return [Hash] name-to-version mapping of installed packages
         def installed_packages
-          @installed_packages ||= Hash[*parse_list_output("list", "-l", "-r").flatten]
-          @installed_packages
+          @installed_packages ||= begin
+            targets = new_resource.name
+            target_dirs = []
+            # If we're using a single package name, have it at the head of the list
+            # so we can get more performance
+            target_dirs << targets.first.downcase if targets.length == 1
+            target_dirs << targets if targets.downcase if is_a?(String)
+            target_dirs += get_local_pkg_dirs(choco_lib_path)
+            fetch_package_versions(choco_lib_path, target_dirs, targets)
+          end
+        end
+
+        # Grab the nupkg folder list
+        def get_local_pkg_dirs(base_dir)
+          Dir.entries(base_dir).select do |dir|
+            ::File.directory?(::File.join(base_dir, dir)) && !dir.start_with?('.')
+          end
         end
 
         # Helper to convert choco.exe list output to a Hash
@@ -291,6 +400,45 @@ class Chef
           args.push( [ "--user", new_resource.user ] ) if new_resource.user
           args.push( [ "--password", new_resource.password ]) if new_resource.password
           args
+        end
+
+        # Fetch the local package vertsions from chocolatey
+        def fetch_package_versions(base_dir, target_dirs, targets)
+          pkg_versions = {}
+          target_dirs.each do |dir|
+            pkg_versions.merge!(get_pkg_data(::File.join(base_dir, dir)))
+            # return early if we found the single package version we were looking for
+            if targets.length == 1 && pkg_versions[targets.first]
+              return pkg_versions
+            end
+          end
+          pkg_versions
+        end
+
+        # Grab the locally installed packages from the nupkg list
+        # rather than shelling out to chocolatey
+        def get_pkg_data(path)
+          t = ::File.join(path, '*.nupkg').gsub('\\', '/')
+          targets = Dir.glob(t)
+
+          # Extract package version from thr first nuspec file in this nupkg
+          targets.each do |target|
+            Zip::File.open(target) do |zip_file|
+              zip_file.each do |entry|
+                next unless entry.name.end_with?('.nuspec')
+                f = entry.get_input_stream
+                doc = REXML::Document.new(f.read.to_s)
+                f.close
+                id = doc.elements['package/metadata/id']
+                version = doc.elements['package/metadata/version']
+                return { id.text.to_s.downcase => version.text } if id && version
+              end
+            end
+          end
+          {}
+        rescue StandardError => e
+          Chef::Log.warn("Failed to get package info for #{path}: #{e}")
+          {}
         end
       end
     end
